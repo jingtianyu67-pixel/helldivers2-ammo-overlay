@@ -1,0 +1,134 @@
+{
+  "_comment": "HD2 弹药识别配置。regions 按优先级排；每个 region 为屏幕物理像素 [左,上,右,下]。window 为该区域的固定窗口掩膜（npy），null 表示自动模式。probe 为两级判定用的探针（区域局部坐标）：white=外框端点，命中数 >= white_need 即认定弹匣存在；red=底部斜线，>= red_need 即认定为红色低弹态。无 probe 的区域退回形状判定。",
+  "calibrated_for": [
+    2560,
+    1440
+  ],
+  "hz": 50,
+  "regions": [
+    {
+      "name": "A",
+      "region": [
+        330,
+        1250,
+        390,
+        1300
+      ],
+      "window": "assets/a_interior_mask.npy",
+      "_note": "window 只用于存在性门槛（判断弹匣在不在这个区域）。余量分母不用它——图标会漂移，实测掩膜与弹匣 IoU 只有 0.37，会读数砍半；改由 detect.fill_inset 从当帧检出的弹匣形状算。本区域坐标 = **有背包**时的位置；无背包时整体加 layout.shift（HUD 左移），不需要第二套区域。",
+      "_probe_comment": "A 区域 60x50。白探针=外框端点：顶部横条两端、底部两端、左右中框（外框恒白，与填充量无关）。命中数 >= white_need 即认定弹匣存在，但仍须过掩膜面积与形状 IoU 校验——持枪姿态下枪身剪影会让白探针满分命中。红色不参与任何判定。探针是区域局部坐标，区域平移时自动跟随。",
+      "probe": {
+        "white": [
+          [
+            23,
+            5
+          ],
+          [
+            38,
+            8
+          ],
+          [
+            29,
+            35
+          ],
+          [
+            45,
+            35
+          ],
+          [
+            23,
+            16
+          ],
+          [
+            40,
+            22
+          ]
+        ],
+        "white_need": 24,
+        "radius": 1
+      }
+    }
+  ],
+  "layout": {
+    "_comment": "HUD 布局自适应（背包 / 无背包）。游戏里背不背补给背包，左下角弹药 HUD 会整体平移：实测（2560x1440）弹匣从 x372 移到 x266，左移 106px、y 不变。probe_rect = 用户给的判据矩形（标定分辨率坐标）：**里面有白色竖线 = 有背包**，那条竖线是背包图标与弹药区之间的分隔线，只有背背包时才出现。判法用「最长竖直连续亮段长度」而不是像素总数：竖线约 8x36~45px 且竖直连续（实测 28px），无背包时同位置只剩弹药数字笔画（实测 6px），min_run=24 卡在中间。shift = 无背包时给区域坐标加的偏移。interval = 每隔多少秒重判一次（1.0 = 每秒一次；按时间而非帧数，改采样率不影响）。enabled=false 可关掉自适应、永远用 regions 里的原坐标。",
+    "enabled": true,
+    "probe_rect": [
+      330,
+      1250,
+      337,
+      1295
+    ],
+    "shift": [
+      -106,
+      0
+    ],
+    "min_run": 24,
+    "lum": 130,
+    "interval": 1.0
+  },
+  "detect": {
+    "template": "assets/shape_template.npy",
+    "bg_margin": 18,
+    "lum_floor": 55,
+    "edge": 5,
+    "shape_min_iou": 0.46,
+    "min_mask_px": 30,
+    "near_dilate": 3,
+    "hold_frames": 3,
+    "ema_alpha": 0.5,
+    "switch_after": 2,
+    "snap_full": 0.88,
+    "max_mask_ratio": 0.55,
+    "fill_inset": 2,
+    "empty_frac": 0.06,
+    "_fill_comment": "余量口径只有一句话：弹匣体内的白像素数 / 弹匣体面积。弹匣体 = 白像素最大连通域的凸包内缩 fill_inset（= 外框线粗细 2px），外框线因此整条落在外面，分子里只剩底部实心填充。不做开运算、不设任何颜色阈值。",
+    "min_mask_ratio": 0.3,
+    "red_chroma": 55,
+    "red_min": 120,
+    "red_min_px": 25,
+    "red_body_frac": 0.2,
+    "red_shape_min_iou": 0.4,
+    "shell_min_iou": 0.52,
+    "shell_min_px": 40,
+    "_shell_comment": "空壳通道：打空弹匣时游戏把填充清空、只留一圈轮廓线，白像素从 ~544px 掉到 ~142px，低于 mask_floor（30% 窗口面积）→ 旧逻辑判「无弹匣」让覆盖层整个隐藏。这一档改为：白掩膜面积不足时，只要轮廓形状 IoU >= shell_min_iou 且落在窗口邻域内、体内既无白填充也无红填充，就判 state=empty（余量 0）→ 覆盖层显示灰色空轨。shell_min_px 是轮廓像素下限（防噪点撞模板）；门槛比白色通道的 0.46 严，因为这一档没有面积背书。",
+    "_red_comment": "红色通道（只判「低弹红」，不进百分比分子）。HD2 在余量低于阈值时把整个弹药计量器转红，白色像素会整条消失，只认白的口径会误判成「未检测到」让覆盖层隐藏。判据：red_chroma = R-max(G,B) 色度下限，red_min = R 绝对亮度下限（两者一起挡掉火山/血污/红天的暗红）；red_min_px = 红像素绝对数下限；red_body_frac = 红像素占弹匣体面积的比例下限；red_shape_min_iou = 红色凸包与模板的形状 IoU 下限（与白色通道同一把尺子，红碎片过不了）。两条路径：白色还在但 body 内以红为主（外框仍白），或白色整条消失、红像素自成弹匣形状。",
+    "_comment": "识别口径：百分比只数白像素。extract 用「比该行两侧中位亮度高出 bg_margin 且接近灰(chroma<25)」判定白；弹匣 = 白像素最大连通域；余量 = 弹匣体内的白像素数 / 弹匣体面积。红色单独一条通道，只回答「现在是不是低弹红」，由 overlay 决定整条泛红——红色永远不进百分比分子。"
+  },
+  "shots_dir": "hd2_ammo_shots",
+  "zoom": 8,
+  "overlay": {
+    "_comment": "弧线覆盖层。几何：圆心 = 屏幕中心(准星) + offset，半径 radius，从 ang_start(上端) 到 ang_end(下端)，0°=正右、顺时针为正。填充从下端往上游走，长度 = 白像素占比。alpha 是整条弧线的总体不透明度。低弹转红：low_threshold = 白像素占比阈值（0.22 = 用户那帧参考图实测的占比），low_white_px = 直接用白像素个数的阈值（>0 时生效，两个条件满足任一即转红）；low_full_bar=true 时低弹整条弧线全红，false 则只把已填那一段变红。空弹匣（占比归零）一律不画实心条，只留灰色轨迹 —— 否则空弹匣会顶着一整条红。topmost_reassert_ms 是重夺置顶的间隔，hide_on_invalid=true 时识别不到就把窗口藏起来。改这些不用手改 JSON——跑 python tune_arc.py 可视化拖拽调参，按 S 存回本文件。",
+    "enabled": true,
+    "anchor": "center",
+    "offset": [
+      0.0,
+      0
+    ],
+    "radius": 217.0,
+    "width": 14.0,
+    "ang_start": -51.0,
+    "ang_end": 51.0,
+    "alpha": 1.0,
+    "track_rgb": [
+      129,
+      128,
+      129
+    ],
+    "track_alpha": 0.62,
+    "fill_rgb": [
+      237,
+      240,
+      241
+    ],
+    "low_rgb": [
+      214,
+      44,
+      40
+    ],
+    "low_threshold": 0.22,
+    "redraw_step": 0.01,
+    "hide_on_invalid": true,
+    "low_full_bar": true,
+    "low_white_px": 0
+  }
+}

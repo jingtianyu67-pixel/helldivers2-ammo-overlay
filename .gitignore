@@ -1,0 +1,24 @@
+# ---- 构建产物 ----
+_exe/
+dist/
+build/
+*.spec
+
+# ---- 运行日志 ----
+logs/
+*.log
+
+# ---- 开发过程素材（体积大，本地重新生成即可）----
+_out/
+_ch/
+_vid/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

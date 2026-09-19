@@ -1,0 +1,149 @@
+{
+  "_comment": "HD2 弹药识别配置。regions 按优先级排；每个 region 为屏幕物理像素 [左,上,右,下]。window 为该区域的固定窗口掩膜（npy），null 表示自动模式。probe 为两级判定用的探针（区域局部坐标）：white=外框端点，命中数 >= white_need 即认定弹匣存在；red=底部斜线，>= red_need 即认定为红色低弹态。无 probe 的区域退回形状判定。",
+  "calibrated_for": [
+    2560,
+    1440
+  ],
+  "hz": 50,
+  "regions": [
+    {
+      "name": "A",
+      "region": [
+        330,
+        1250,
+        390,
+        1300
+      ],
+      "window": "assets/a_interior_mask.npy",
+      "_note": "window 只用于存在性门槛（判断弹匣在不在这个区域）。余量分母不用它——图标会漂移，实测掩膜与弹匣 IoU 只有 0.37，会读数砍半；改由 detect.fill_inset 从当帧检出的弹匣形状算。",
+      "_probe_comment": "A 区域 60x50。白探针=外框端点：顶部横条两端、底部两端、左右中框（外框恒白，与填充量无关）。命中数 >= white_need 即认定弹匣存在，但仍须过掩膜面积与形状 IoU 校验——持枪姿态下枪身剪影会让白探针满分命中。红色不参与任何判定。",
+      "probe": {
+        "white": [
+          [
+            23,
+            5
+          ],
+          [
+            38,
+            8
+          ],
+          [
+            29,
+            35
+          ],
+          [
+            45,
+            35
+          ],
+          [
+            23,
+            16
+          ],
+          [
+            40,
+            22
+          ]
+        ],
+        "white_need": 24,
+        "radius": 1
+      }
+    },
+    {
+      "name": "B",
+      "region": [
+        230,
+        1245,
+        270,
+        1300
+      ],
+      "window": "assets/interior_mask.npy",
+      "_probe_comment": "含探针坐标用区域局部像素，两组区域尺寸不同必须各标一套。白=外框端点+左右中框。红色不参与任何判定。",
+      "probe": {
+        "white": [
+          [
+            11,
+            10
+          ],
+          [
+            19,
+            10
+          ],
+          [
+            18,
+            43
+          ],
+          [
+            29,
+            43
+          ],
+          [
+            12,
+            28
+          ],
+          [
+            29,
+            33
+          ]
+        ],
+        "white_need": 20,
+        "radius": 1
+      }
+    }
+  ],
+  "detect": {
+    "template": "assets/shape_template.npy",
+    "bg_margin": 18,
+    "lum_floor": 55,
+    "edge": 5,
+    "shape_min_iou": 0.46,
+    "min_mask_px": 30,
+    "near_dilate": 3,
+    "hold_frames": 3,
+    "ema_alpha": 0.5,
+    "switch_after": 2,
+    "snap_full": 0.88,
+    "max_mask_ratio": 0.55,
+    "fill_inset": 2,
+    "empty_frac": 0.06,
+    "_fill_comment": "余量口径只有一句话：弹匣体内的白像素数 / 弹匣体面积。弹匣体 = 白像素最大连通域的凸包内缩 fill_inset（= 外框线粗细 2px），外框线因此整条落在外面，分子里只剩底部实心填充。不做开运算、不设任何颜色阈值。",
+    "min_mask_ratio": 0.3,
+    "_comment": "识别口径：只数白像素。extract 用「比该行两侧中位亮度高出 bg_margin 且接近灰(chroma<25)」判定白；弹匣 = 白像素最大连通域；余量 = 弹匣体内的白像素数 / 弹匣体面积；低于 overlay.low_threshold 由 overlay 把弧线转红——识别链路里没有任何颜色判定。"
+  },
+  "shots_dir": "hd2_ammo_shots",
+  "zoom": 8,
+  "overlay": {
+    "_comment": "弧线覆盖层。几何：圆心 = 屏幕中心(准星) + offset，半径 radius，从 ang_start(上端) 到 ang_end(下端)，0°=正右、顺时针为正。填充从下端往上游走，长度 = 白像素占比。alpha 是整条弧线的总体不透明度。低弹转红：low_threshold = 白像素占比阈值（0.22 = 用户那帧参考图实测的占比），low_white_px = 直接用白像素个数的阈值（>0 时生效，两个条件满足任一即转红）；low_full_bar=true 时低弹整条弧线全红，false 则只把已填那一段变红。空弹匣（占比归零）一律不画实心条，只留灰色轨迹 —— 否则空弹匣会顶着一整条红。topmost_reassert_ms 是重夺置顶的间隔，hide_on_invalid=true 时识别不到就把窗口藏起来。改这些不用手改 JSON——跑 python tune_arc.py 可视化拖拽调参，按 S 存回本文件。",
+    "enabled": true,
+    "anchor": "center",
+    "offset": [
+      0.0,
+      0
+    ],
+    "radius": 217.0,
+    "width": 14.0,
+    "ang_start": -51.0,
+    "ang_end": 51.0,
+    "alpha": 1.0,
+    "track_rgb": [
+      129,
+      128,
+      129
+    ],
+    "track_alpha": 0.62,
+    "fill_rgb": [
+      237,
+      240,
+      241
+    ],
+    "low_rgb": [
+      214,
+      44,
+      40
+    ],
+    "low_threshold": 0.22,
+    "redraw_step": 0.01,
+    "hide_on_invalid": true,
+    "low_full_bar": true,
+    "low_white_px": 0
+  }
+}
